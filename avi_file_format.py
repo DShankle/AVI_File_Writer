@@ -129,33 +129,7 @@ class streamHeaderChunk:
         self.ckSize = pLL(l-c) #len to next LIST - current offset
 
 class strfChunk:
-    '''
-    ckID = b'strf'
-#tagBITMAPINFOHEADER
-  #DWORD 4
-  biSize
-  #LONG  8
-  biWidth
-  #LONG  8
-  biHeight
-  #WORD  2
-  biPlanes
-  #WORD  2
-  biBitCount
-  #DWORD 4
-  biCompression
-  #DWORD 4 
-  biSizeImage
-  #LONG  8
-  biXPelsPerMeter
-  #LONG  8
-  biYPelsPerMeter
-  #DWORD 4
-  biClrUsed
-  #DWORD 4  = 56 bytes total
-  biClrImportant
-} BITMAPINFOHEADER, *LPBITMAPINFOHEADER, *PBITMAPINFOHEADER;
-    '''
+
     ckID = b'strf'
     #tagBITMAPINFOHEADER
     ckSize = pBL(0x2C000000)
@@ -210,42 +184,100 @@ class moviChunk:
         pass
 
     def build(self):
-        return self.ckID + self.compVid
+        return self.ckID #+ self.compVid
 
     def reSize(self, l, c):
         #self.ckSize = pLL(l-c)
         pass
 
-class indxChunk:
+class indxSuperChunk:
 
 #struct _aviindex_chunk {
     #FOURCC fcc;
     ckID = b'indx'
     #DWORD cb;
-    ckSize = pBL()
+    ckSize = pBL(0x00000000) #points to first? avistdindex_chunk
     #WORD wLongsPerEntry; // size of each entry in aIndex array
-    wLongsPerEntry = pBL() #04000000
+    wLongsPerEntry = pBS(0x0400) #0400
     #BYTE bIndexSubType; // future use. must be 0
-    bIndexSubType = pBL() #01000000
+    bIndexSubType = b'\x00' #00
     #BYTE bIndexType; // one of AVI_INDEX_* codes
-    bIndexType = pBL() # 30306462
+    '''
+    OpenDML AVI File Format Extensions:
+    // bIndexType codes
+    //
+    #define AVI_INDEX_OF_INDEXES 0x00 // when each entry in aIndex
+    // array points to an index chunk
+    #define AVI_INDEX_OF_CHUNKS 0x01 // when each entry in aIndex
+    // array points to a chunk in the file
+    #define AVI_INDEX_IS_DATA 0x80 // when each entry is aIndex is really the data
+    // bIndexSubtype codes for INDEX_OF_CHUNKS
+    #define AVI_INDEX_2FIELD 0x01 // when fields within frames
+    // are also indexed
+    '''
+    bIndexType = b'\x00' # 00
     #DWORD nEntriesInUse; // index of first unused member in aIndex array
-    nEntriesInuse = pBL() #00000000
+    nEntriesInuse = pBL(0x01000000) #01000000
     #DWORD dwChunkId; // fcc of what is indexed
-    dwChunkId = pBL() #00000000
+    dwChunkId = pBL(0x30306462) #30306462 00db
     #DWORD dwReserved[3]; // meaning differs for each index type/subtype. 0 if unused
     dwReserved = [pBL(0x00000000),pBL(0x00000000),pBL(0x00000000)]
-    #struct _aviindex_entry {
-    #DWORD adw[wLongsPerEntry];
+    
+#struct _aviindex_entry {
+    #QUADWORD qwOffset; // absolute file offset, offset 0 is unused entry??
+    qwOffset = pBL(0x00000100) + pBL(0x00000000) #0000010000000000
+    #DWORD dwSize; // size of index chunk at this offset
+    dwSize = pBL(0x007E0000) #007E0000 
+    #DWORD dwDuration; // time span in stream ticks
+    dwDuration = pBL(0x3A000000) #3A000000
     #} aIndex[ ];
 #};
 
-    def __init__(self, l, h, s):
-        self.size = pLL(l - (h+6))
-        self.soundData = s
+    def __init__(self):
+        chunkLen = len(self.build())
+        self.ckSize = pLL(chunkLen - 8)
     
     def build(self):
-        return self.ckID + self.ckSize + self.offset + self.blockSize + self.soundData
+        return self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.qwOffset + self.dwSize + self.dwDuration
+
+
+class indxFieldChunk:
+    #FOURCC fcc;
+    ckID = b'ix00'
+    #DWORD cb;
+    ckSize = pBL(0x00000000) #points to first? avistdindex_chunk
+    #WORD wLongsPerEntry; // size of each entry in aIndex array "must be 3"??
+    wLongsPerEntry = pBS(0x0200) #0200
+    #BYTE bIndexSubType;
+    bIndexSubType = b'\x00' #00
+    #BYTE bIndexType; // one of AVI_INDEX_* codes
+    bIndexType = b'\x01' # AVI_INDEX_2FIELD
+    #DWORD nEntriesInUse; // index of first unused member in aIndex array
+    nEntriesInuse = pBL(0x01000000) #3A000000
+    #DWORD dwChunkId; // fcc of what is indexed
+    dwChunkId = pBL(0x30306462) #30306462 00db
+    #QWORD 
+    qwBaseOffset = pBL(0x00FC0100) + pBL(0x00000000) #00FC010000000000
+    #DWORD dwReserved[3]; // meaning differs for each index type/subtype. 0 if unused
+    dwReserved = [pBL(0x00000000),pBL(0x00000000),pBL(0x00000000)]
+    
+#struct _aviindex_entry {
+    #DWORD
+    dwOffset = pBL(0x00000000) #0000010000000000
+    #DWORD dwSize; // size of index chunk at this offset
+    dwSize = pBL(0x007E0000) #007E0000 
+    #DWORD dwDuration; // time span in stream ticks
+    dwOffsetField2 = pBL(0x00000000)
+    #} aIndex[ ];
+#};
+
+    def __init__(self):
+        chunkLen = len(self.build())
+        self.ckSize = pLL(chunkLen - 4)
+    
+    def build(self):
+        return self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.qwBaseOffset +self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.dwOffset + self.dwSize + self.dwOffsetField2
+
 
 def buildAvi(vidData):
     rc = riffChunk()
@@ -253,25 +285,27 @@ def buildAvi(vidData):
     shc = streamHeaderChunk()
     strf = strfChunk()
     mov = moviChunk()
-    #id = indxChunk()
+    isc = indxSuperChunk()
+    ifc = indxFieldChunk()
     riff = rc.build()
     mainHead = mhc.build()
     streamHead = shc.build()
     strfC = strf.build()
     movi = mov.build()
     lenList = len(listChunk(0).build())
-    #idx = id.build()
-    tl = len(riff + mainHead + streamHead + strfC + movi)
+    indx = isc.build()
+    indxField = ifc.build()
+    tl = len(riff + mainHead + streamHead + strfC + indx + movi + indxField )
     l = (tl - len(riff)) + lenList*2 
     list1 = listChunk(l).build() 
     l = tl - len(riff + mainHead) + lenList
     list2 = listChunk(l).build()
-    l = len(movi + vidData)
+    l = len(movi + indxField +vidData)
     list3 = listChunk(l).build()
-    ret = riff + list1 + mainHead + list2 + streamHead + strfC +  list3 + movi + vidData
+    ret = riff + list1 + mainHead + list2 + streamHead + strfC +  indx +list3 + movi + indxField  + vidData
     rc.reSize(len(ret)+1)
     riff = rc.build()
-    ret = riff + list1 + mainHead + list2 + streamHead + strfC + list3 + movi + vidData
+    ret = riff + list1 + mainHead + list2 + streamHead + strfC + indx +list3 + movi + indxField + vidData
 
     return ret
 
