@@ -227,18 +227,26 @@ class indxSuperChunk:
     #QUADWORD qwOffset; // absolute file offset, offset 0 is unused entry??
     qwOffset = pBL(0x00000100) + pBL(0x00000000) #0000010000000000
     #DWORD dwSize; // size of index chunk at this offset
-    dwSize = pBL(0x007E0000) #007E0000 
+    dwSizeUnpacked = 0x00000100
+    dwSize = pBL(dwSizeUnpacked) #007E0000
     #DWORD dwDuration; // time span in stream ticks
     dwDuration = pBL(0x3A000000) #3A000000
     #} aIndex[ ];
 #};
 
-    def __init__(self):
+    def __init__(self, indexSize):
+        self.dwSizeUnpacked = indexSize
         chunkLen = len(self.build())
         self.ckSize = pLL(chunkLen - 8)
     
     def build(self):
-        return self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.qwOffset + self.dwSize + self.dwDuration
+        b = self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.qwOffset + self.dwSize + self.dwDuration
+        pad = b'\x00'
+        x = self.dwSizeUnpacked - len(b)
+        if x > 0:
+            return b + (pad * x)
+        else:
+            return b
 
 
 class indxFieldChunk:
@@ -265,28 +273,51 @@ class indxFieldChunk:
     #DWORD
     dwOffset = pBL(0x00000000) #0000010000000000
     #DWORD dwSize; // size of index chunk at this offset
+    dwSizeUnpacked = 0x00000100
     dwSize = pBL(0x007E0000) #007E0000 
     #DWORD dwDuration; // time span in stream ticks
     dwOffsetField2 = pBL(0x00000000)
     #} aIndex[ ];
 #};
 
-    def __init__(self):
+    def __init__(self, indexSize):
+        self.dwSizeUnpacked = indexSize
         chunkLen = len(self.build())
-        self.ckSize = pLL(chunkLen - 4)
+        self.ckSize = pLL(chunkLen - 8)
     
     def build(self):
-        return self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.qwBaseOffset +self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.dwOffset + self.dwSize + self.dwOffsetField2
+        b = self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.qwBaseOffset +self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.dwOffset + self.dwSize + self.dwOffsetField2
+        pad = b'\x00'
+        x = self.dwSizeUnpacked - len(b)
+        if x > 0:
+            return b + (pad * x) 
+        else:
+            return b
+
+class contentChunk:
+    dwChunkId = pBL(0x30306462)
+    vidData = (b"A")
+    ckSize = pBL(0x00000000)
+
+    def __init__(self, size):
+        self.vidData = (b"A"*size)
+        self.ckSize = pLL(len(self.build())-5)
+
+    def build(self):
+        return self.dwChunkId + self.ckSize + self.vidData
 
 
-def buildAvi(vidData):
+def buildAvi():
+    vidSize = (0x1000-0x7)
+    vid = contentChunk(vidSize)
+    indexSize = 0x00000200 #indexes will be paded to this
     rc = riffChunk()
     mhc = mainHeaderChunk()
     shc = streamHeaderChunk()
     strf = strfChunk()
     mov = moviChunk()
-    isc = indxSuperChunk()
-    ifc = indxFieldChunk()
+    isc = indxSuperChunk(indexSize)
+    ifc = indxFieldChunk(isc.dwSizeUnpacked)
     riff = rc.build()
     mainHead = mhc.build()
     streamHead = shc.build()
@@ -295,12 +326,14 @@ def buildAvi(vidData):
     lenList = len(listChunk(0).build())
     indx = isc.build()
     indxField = ifc.build()
-    tl = len(riff + mainHead + streamHead + strfC + indx + movi + indxField )
-    l = (tl - len(riff)) + lenList*2 
+    vidData = vid.build()
+
+    tl = len(riff  + mainHead  + streamHead + strfC +  indx  )
+    l = (tl - len(riff)) + lenList
     list1 = listChunk(l).build() 
-    l = tl - len(riff + mainHead) + lenList
+    l = tl - len(riff + mainHead)
     list2 = listChunk(l).build()
-    l = len(movi + indxField +vidData)
+    l = len(movi + indxField +vidData) 
     list3 = listChunk(l).build()
     ret = riff + list1 + mainHead + list2 + streamHead + strfC +  indx +list3 + movi + indxField  + vidData
     rc.reSize(len(ret)+1)
@@ -311,8 +344,8 @@ def buildAvi(vidData):
 
  
 
-vidData = ((0x1000-0x7)*b"A")
-content = buildAvi(vidData)
+
+content = buildAvi()
 
 
 file = open("test2.avi", "wb")
