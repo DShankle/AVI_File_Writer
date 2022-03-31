@@ -91,7 +91,7 @@ class streamHeaderChunk:
     wLanguage = pBS(0x0000) #idk
     #DWORD Number of the first block of the stream that is present in the file. will need to initilize dynamically
     dwInitialFrames = pBL(0x00000000)
-    #DWORD samples per second or frames per second 25/1 or 10,000,000/400,000
+    #DWORD samples per second or frames per second 25/1 or 10,000,000/400,000h
     dwScale = pBL(0x00000001) #0xe9030000
     #DWORD 
     dwRate = pBL(0x000000019) #30750000
@@ -220,7 +220,8 @@ class indxSuperChunk:
     
     #struct _aviindex_entry {
     #QUADWORD qwOffset; // absolute file offset, offset 0 is unused entry. Points to ix00
-    qwOffset = pBL(0x1C030000) + pBL(0x00000000) #pBL(0x1C030000) + pBL(0x00000000)
+    #FIXME needs to be dynamically allocated to point to next ix## chunk
+    qwOffset = pBL(0x1C030000) + pBL(0x00000000) #0000010000000000
     #DWORD dwSize; // size of index chunk at this offset
     dwSizeUnpacked = 0x00000100
     dwSize = pBL(dwSizeUnpacked) #007E0000
@@ -295,11 +296,24 @@ class contentChunk:
     ckSize = pBL(0x00000000)
 
     def __init__(self, size):
-        self.vidData = (b'\x01'*size)
+        self.vidData = (b"A"*size)
         self.ckSize = pLL(len(self.build())-5)
 
-    def build(self):
-        return self.dwChunkId + self.ckSize + self.vidData
+    def build(self, indxOffset):
+        ret = self.dwChunkId + self.ckSize 
+        #TODO vvv
+        #for the arbitrary fixed length n bytes of content build and instert a new indexFieldChunk ix##
+        i = 0 #iteration count
+        ii = 1 #chunk #
+        for b in self.vidData:
+            if i == indxOffset:
+                ifc = indxFieldChunk(indxOffset,ii) #TODO  update for chunk # in indxFieldChunk class
+                ii += 1
+                i = 0
+                ret += ifc.build()
+            ret += b
+            i += 1
+        #TODO ^^^
 
 class odmlChunk:
     ckID = b'odml'
@@ -322,7 +336,6 @@ def buildAvi():
     indexSize = 0x00000200 #indexes will be paded to this
 
     #initilize objects
-    vid = contentChunk(vidSize)
     rc = riffChunk()
     mhc = mainHeaderChunk()
     shc = streamHeaderChunk()
@@ -331,6 +344,7 @@ def buildAvi():
     isc = indxSuperChunk(indexSize)
     ifc = indxFieldChunk(isc.dwSizeUnpacked)
     od = odmlChunk()
+    vid = contentChunk(vidSize)
     
     lenList = len(listChunk(0).build())
     #build the basic chunks so we can measure lengths and prepare
@@ -341,7 +355,7 @@ def buildAvi():
     movi = mov.build()
     indx = isc.build()
     indxField = ifc.build()
-    vidData = vid.build()
+    vidData = vid.build(isc.dwSizeUnpacked)
     odml = od.build()
     
     # put together everything so we can rebuild our RIFF chunk with the correct file size

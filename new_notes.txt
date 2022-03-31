@@ -1,0 +1,124 @@
+https://docs.fileformat.com/audio/aiff/
+https://wiki.videolan.org/Hacker_Guide/
+https://code.videolan.org/videolan/vlc-3.0/-/blob/0660acc3ab64d2c3ad99cae887a438f0648faa72/modules/demux/aiff.c
+
+Comparable vulns in VLC:
+
+AVI:
+    Found by Zhen Zhou, NSFOCUS Security Team?
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-25801
+        https://code.videolan.org/videolan/vlc-3.0/-/commit/f5f8cc3ab8825f178de3f6714bfbff8b3f293fd2
+        https://code.videolan.org/videolan/vlc-3.0/-/blob/de8cf1d0bd2ab135df41ff1d5fb32cf8eb306abc/modules/demux/avi/avi.c - line 2663
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-25802
+        https://code.videolan.org/videolan/vlc-3.0/-/commit/0660acc3ab64d2c3ad99cae887a438f0648faa72#957f074651dc7f25b1e6771ecc8d4798f8882d5f
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-25803
+        https://code.videolan.org/videolan/vlc-3.0/-/commit/56cbe9c4b59edbdc5e1bb2687992f3bbf492eccb   
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2021-25804
+        https://code.videolan.org/videolan/vlc-3.0/-/commit/a7f577ec26d35bbd7b2a3cda89d1b41bde69de9c
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-13428 (iOS)
+        https://github.com/videolan/vlc/commits/master/modules/packetizer/hxxx_nal.c
+
+MKV:
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2020-26664
+        https://gist.githubusercontent.com/henices/db11664dd45b9f322f8514d182aef5ea/raw/d56940c8bf211992bf4f3309a85bb2b69383e511/CVE-2020-26664.txt
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-14970
+        http://git.videolan.org/?p=vlc.git&a=search&h=refs/heads/master&st=commit&s=cve-2019
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-14778
+        http://git.videolan.org/?p=vlc.git;a=commitdiff;h=0f71d03f65d54c1cc5b21bdb10124f469bf7ec21
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-14776
+        http://git.videolan.org/?p=vlc.git;a=commitdiff;h=fdbdd677c1e6262f31771b0ba10afb24aabf108c
+
+Past AIFF:
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2007-6236
+        https://www.exploit-db.com/exploits/4682
+
+
+CAF:
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-14498
+        http://git.videolan.org/?p=vlc.git;a=commitdiff;h=56b21668e8d9384386cb037f3eb0b13dd6dae5b5
+    
+OGG:
+    https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2019-14438
+        http://git.videolan.org/?p=vlc.git;a=commitdiff;h=93f04f42e92df8af1697a3c990c88d62eb7f528d
+
+
+Firefox WAV Parser:
+https://searchfox.org/mozilla-central/source/dom/media/wave/WaveDecoder.h
+https://searchfox.org/mozilla-central/source/dom/media/platforms/agnostic/WAVDecoder.cpp
+https://searchfox.org/mozilla-central/source/dom/media/wave/WaveDemuxer.h
+https://searchfox.org/mozilla-central/source/dom/media/wave/WaveDemuxer.cpp
+
+
+VLC Notes:
+
+Decoding is done on a seperate thread from playing.
+Modules/ will contain most of the parsing code
+Modules are loaded on demand at runtime
+"When VLC needs a "decoder" ("decoder" is one category/capability), it opens all "decoder" modules, until one matches. "
+
+"What happens to a file
+
+An input thread is spawned for every file read. Indeed, input structures and decoders need to be reinitialized because the specificities of the stream may be different. input_CreateThread is called by the interface thread (playlist module).
+
+At first, vlc[Is this up-to-date? See talk] looks for an access or access_demux module to open the stream, by calling the function module->pf_activate. If it succeeds, the module thread is started, and vlc can start looking for a demux module to demultiplex the output of the access module. "
+
+Input
+
+    Access (https://wiki.videolan.org/Hacker_Guide/Access/)
+        An access module provides a byte stream from a location string MRL, like support for files, HTTP streams, webcams...
+    Demuxer (https://wiki.videolan.org/Hacker_Guide/Demux/)
+        A demux module parses a byte stream and splits it into elementary streams (tracks).
+    Access-Demuxer
+        An access_demux module combines the functionality of access and demux (and bypass any stream filters), splitting elementary streams directly from a location string. It's used where the bytestream abstraction is inadequate.
+    Stream Filters
+        A stream filter module converts a byte stream into another byte stream. It could be used for file or byte stream decryption, as it is already used for decompression (gzip, Bzip2, XZ) and multi-part files.
+    Decoder (https://wiki.videolan.org/Hacker_Guide/Decoder/)
+        A decoder takes an elementary stream and convert into raw video, audio or text data, reading for output.
+
+
+  
+  Access - https://videolan.videolan.me/vlc/group__access.html
+
+  Stream - https://videolan.videolan.me/vlc/group__stream.html
+  
+  Input - https://videolan.videolan.me/vlc/group__input.html
+    Demuxer - Open( vlc_object_t * p_this ) //pointer to stream?
+
+Function to look out for:
+/**
+ * Peeks at data from a byte stream.
+ *
+ * This function buffers for the requested number of bytes, waiting if
+ * necessary. Then it stores a pointer to the buffer. Unlike vlc_stream_Read()
+ * or vlc_stream_Block(), this function does not modify the stream read offset.
+ *
+ * \note
+
+ //zz specifically this vvvv
+ * The buffer remains valid until the next read/peek or seek operation on the
+ * same stream. In case of error, the buffer address is undefined.
+ *
+ * \param bufp storage space for the buffer address [OUT]
+ * \param len number of bytes to peek
+ * \return the number of bytes actually available (shorter than requested if
+ * the end-of-stream is reached), or a negative value on error.
+ */
+VLC_API ssize_t vlc_stream_Peek(stream_t *, const uint8_t **, size_t) VLC_USED;
+
+
+Websities to find corpus for fuzzing:
+http://samples.mplayerhq.hu/
+https://media.xiph.org/video/derf/
+
+More AVI File Info including structure:
+http://sites.utoronto.ca/ski/water/software/vj/avi.html#Codec
+
+
+Debug Notes:
+
+video CORPUS/found/avi/!AVI-demuxer-bugs/a-v_desync closed after exception code 000006f4
+
+libavi_plugin.dll houses _Parse_indx
+
+Reach indexload regardless of whether or not any index (idx or indx) exists. 
+*p_demux stored in eax then  transfered to edi.
