@@ -82,7 +82,7 @@ class streamHeaderChunk:
     #FOURCC 
     fccType = fccTypes[0]
     #FOURCC 
-    fccHandler = b'FMP4'#codec 
+    fccHandler = b'xvid'#codec 
     #DWORD AVISF_VIDEO_PALCHANGES or AVISF_DISABLED
     dwFlags =  pBL(0x00000000)
     #WORD 
@@ -142,9 +142,9 @@ class strfChunk:
     #WORD  2
     biPlanes = pBL(0x68010000)
     #WORD  2
-    biBitCount = pBL(0x01001800)
+    biBitCount =  b'XVID' #apparently biCompression is supposed to be here so i just swapped with biBitCount O.o
     #DWORD 4
-    biCompression = b'FMP4' #??
+    biCompression = pBL(0x01001800) #??
     #DWORD 4 
     biSizeImage = pBL(0x008C0A00)
     #LONG  8
@@ -212,31 +212,35 @@ class indxSuperChunk:
     '''
     bIndexType = b'\x00' # 00
     #DWORD nEntriesInUse; // index of first unused member in aIndex array
-    nEntriesInuse = pBL(0x01000000) #01000000
+    nEntriesInuse = pBL(0x01000000)#pBL(0x01000000) #01000000 setting this to anything higher than 01 will point to aIndex and use it as an absolute offset
     #DWORD dwChunkId; // fcc of what is indexed
     dwChunkId = pBL(0x30306462) #30306462 00db
     #DWORD dwReserved[3]; // meaning differs for each index type/subtype. 0 if unused
-    dwReserved = [pBL(0x00000000),pBL(0x00000000),pBL(0x00000000)]
+    dwReserved = [pBL(0x44444444),pBL(0x42424242),pBL(0x043434343)]
     
     #struct _aviindex_entry {
     #QUADWORD qwOffset; // absolute file offset, offset 0 is unused entry. Points to ix00
     qwOffset = pBL(0x1C030000) + pBL(0x00000000) #pBL(0x1C030000) + pBL(0x00000000)
     #DWORD dwSize; // size of index chunk at this offset
-    dwSizeUnpacked = 0x00000100
+    dwSizeUnpacked = 0x45454545#0x00000100
     dwSize = pBL(dwSizeUnpacked) #007E0000
     #DWORD dwDuration; // time span in stream ticks
     dwDuration = pBL(0x3A000000) #3A000000
+    aIndex = b''
+    #aIndex = pLL(0x6fd829b0) + pBL(0x00000000) absolute offset if EntriesInuse > 01
     #} aIndex[ ];
     #};
 
     def __init__(self, indexSize):
         self.dwSizeUnpacked = indexSize
+        #self.dwSize = pBL(self.dwSizeUnpacked)
+        self.qwOffset = pLL(indexSize + 0x11C) + pBL(0x00000000)
         chunkLen = len(self.build())
         self.ckSize = pLL(chunkLen - 8)
     
     def build(self):
-        b = self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.qwOffset + self.dwSize + self.dwDuration
-        pad = b'\x00'
+        b = self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.qwOffset + self.dwSize + self.dwDuration + self.aIndex
+        pad = b'\x66'
         x = self.dwSizeUnpacked - len(b)
         if x > 0:
             return b + (pad * x)
@@ -248,7 +252,7 @@ class indxFieldChunk:
     #FOURCC fcc;
     ckID = b'ix00'
     #DWORD cb;
-    ckSize = pBL(0x00000000) #points to first? avistdindex_chunk
+    ckSize = pBL(0x51415141)#pBL(0x00000000) #points to first? avistdindex_chunk
     #WORD wLongsPerEntry; // size of each entry in aIndex array "must be 3"??
     wLongsPerEntry = pBS(0x0200) #0200
     #BYTE bIndexSubType;
@@ -256,33 +260,35 @@ class indxFieldChunk:
     #BYTE bIndexType; // one of AVI_INDEX_* codes
     bIndexType = b'\x01' # AVI_INDEX_2FIELD
     #DWORD nEntriesInUse; // index of first unused member in aIndex array
-    nEntriesInuse = pBL(0x01000000) #3A000000
+    nEntriesInuse = pBL(0xFFFFFFFF) #3A000000 max entries based on super index dwSize
     #DWORD dwChunkId; // fcc of what is indexed
     dwChunkId = pBL(0x30306462) #30306462 00db
     #QWORD 
     qwBaseOffset = pBL(0x00FC0100) + pBL(0x00000000) #00FC010000000000
     #DWORD dwReserved[3]; // meaning differs for each index type/subtype. 0 if unused
-    dwReserved = [pBL(0x00000000),pBL(0x00000000),pBL(0x00000000)]
+    #dwReserved = [pBL(0x43434343),pBL(0x44444444),pBL(0x45454545)]
+    dwReserved = pBL(0x49414841)#pBL(0x00000000)
     
     #struct _aviindex_entry {
     #DWORD
-    dwOffset = pBL(0x00000000) #0000010000000000
+    dwOffset = pBL(0x46464646) #0000010000000000
     #DWORD dwSize; // size of index chunk at this offset
     dwSizeUnpacked = 0x00000100
-    dwSize = pBL(0x007E0000) #007E0000 
+    dwSize = pBL(dwSizeUnpacked) #007E0000 
     #DWORD dwDuration; // time span in stream ticks
-    dwOffsetField2 = pBL(0x00000000)
+    dwOffsetField2 = pBL(0x47474747)
     #} aIndex[ ];
     #};
 
     def __init__(self, indexSize):
         self.dwSizeUnpacked = indexSize
+        self.dwSize = pBL(self.dwSizeUnpacked)
         chunkLen = len(self.build())
         self.ckSize = pLL(chunkLen - 8)
     
     def build(self):
-        b = self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.qwBaseOffset +self.dwReserved[0] + self.dwReserved[1] + self.dwReserved[2] + self.dwOffset + self.dwSize + self.dwOffsetField2
-        pad = b'\x00'
+        b = self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.dwChunkId + self.qwBaseOffset +self.dwReserved + self.dwOffset + self.dwSize + self.dwOffsetField2
+        pad = b'\x69'
         x = self.dwSizeUnpacked - len(b)
         if x > 0:
             return b + (pad * x) 
@@ -317,9 +323,9 @@ class odmlChunk:
         return self.ckID + self.ckID2 + self.ckSize + self.someOther + self.zero
 
 def buildAvi():
-    vidSize = (0x1000-0x7)
+    vidSize = (0x400-0x7)
     numList = 4
-    indexSize = 0x00000200 #indexes will be paded to this
+    indexSize = 0x00000f00 #4C #indexes will be paded to this
 
     #initilize objects
     vid = contentChunk(vidSize)
@@ -329,7 +335,7 @@ def buildAvi():
     strf = strfChunk()
     mov = moviChunk()
     isc = indxSuperChunk(indexSize)
-    ifc = indxFieldChunk(isc.dwSizeUnpacked)
+    ifc = indxFieldChunk(indexSize)
     od = odmlChunk()
     
     lenList = len(listChunk(0).build())
