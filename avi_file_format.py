@@ -1,4 +1,5 @@
 from json.tool import main
+from random import randint
 import sys, struct
 
 def pLL(x): return struct.pack("<L", x)
@@ -184,7 +185,7 @@ class moviChunk:
         pass
 
     def build(self):
-        return self.ckID #+ self.compVid
+        return self.ckID + pBL(0x00000000) #+ self.compVid
 
     def reSize(self, l, c):
         #self.ckSize = pLL(l-c)
@@ -222,7 +223,7 @@ class indxSuperChunk:
     #QUADWORD qwOffset; // absolute file offset, offset 0 is unused entry. Points to ix00
     qwOffset = pBL(0x1C030000) + pBL(0x00000000) #pBL(0x1C030000) + pBL(0x00000000)
     #DWORD dwSize; // size of index chunk at this offset
-    dwSizeUnpacked = 0x45454545#0x00000100
+    dwSizeUnpacked = 0x00000100#0x00000100
     dwSize = pBL(dwSizeUnpacked) #007E0000
     #DWORD dwDuration; // time span in stream ticks
     dwDuration = pBL(0x3A000000) #3A000000
@@ -234,7 +235,7 @@ class indxSuperChunk:
     def __init__(self, indexSize):
         self.dwSizeUnpacked = indexSize
         #self.dwSize = pBL(self.dwSizeUnpacked)
-        self.qwOffset = pLL(indexSize + 0x11C) + pBL(0x00000000)
+        self.qwOffset = pLL(indexSize+0xd8) + pBL(0x00000000)
         chunkLen = len(self.build())
         self.ckSize = pLL(chunkLen - 8)
     
@@ -322,7 +323,84 @@ class odmlChunk:
     def build(self):
         return self.ckID + self.ckID2 + self.ckSize + self.someOther + self.zero
 
+class invalidChunk:
+    '''
+    ckID = b'ON' + b'\x00' + b'\x01'
+    ckSize = pBL(0x99999999) 
+    #idk = pBL(0x00000000)
+    pad = pBL(0x00000000)
+    '''
+    #FOURCC fcc;
+    ckID = b'ix01' #+b'\x01' + b'\x01'
+    #DWORD cb;
+    ckSize = pBL(0x00000000)#pBL(0x00000000) #points to first? avistdindex_chunk
+    #WORD wLongsPerEntry; // size of each entry in aIndex array "must be 3"??
+    wLongsPerEntry = pBS(0x0200) #0200
+    #BYTE bIndexSubType;
+    bIndexSubType = b'\x00' #00
+    #BYTE bIndexType; // one of AVI_INDEX_* codes
+    bIndexType = b'\x01' # AVI_INDEX_2FIELD
+    #DWORD nEntriesInUse; // index of first unused member in aIndex array
+    nEntriesInuse = pBL(0x3A000000) #3A000000 max entries based on super index dwSize
+    pad1 = pBL(0x41414141)
+    pad0 = pBL(0x00000000)
+
+    def __init__(self):
+        l = len(self.build())
+        self.ckSize = pLL(l)
+
+    def build(self):
+        return self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.pad1 + self.pad1 +  self.pad1 + self.pad1 +  self.pad1 +  self.pad1 +  self.pad1 + self.pad0
+
 def buildAvi():
+    vidSize = (0x400-0x7)
+    numList = 4
+    indexSize = 0x00000f00 #4C #indexes will be paded to this
+
+    #initilize objects
+    vid = contentChunk(vidSize)
+    rc = riffChunk()
+    mhc = mainHeaderChunk()
+    shc = streamHeaderChunk()
+    strf = strfChunk()
+    mov = moviChunk()
+    isc = indxSuperChunk(indexSize)
+    ifc = indxFieldChunk(indexSize)
+    #od = odmlChunk()
+    
+    lenList = len(listChunk(0).build())
+    #build the basic chunks so we can measure lengths and prepare
+    riff = rc.build()
+    mainHead = mhc.build()
+    streamHead = shc.build()
+    strfC = strf.build()
+    movi = mov.build()
+    indx = isc.build()
+    indxField = ifc.build()
+    vidData = vid.build()
+    #odml = od.build()
+    odml = invalidChunk().build()
+    
+    # put together everything so we can rebuild our RIFF chunk with the correct file size
+    totalLen = len(riff + mainHead + streamHead + strfC + indx + odml + movi ) + lenList * numList #+ indxField + vidData)
+    rc.reSize(totalLen+1)
+    riff = rc.build()
+    
+    #build the lists
+    contentLen = len(movi) #+ indxField + vidData)
+    runningLen = len(riff) + contentLen + lenList*2
+    mainHeaderList = listChunk(totalLen  - runningLen).build()
+    runningLen = runningLen + len(mainHead) + lenList*2 + len(odml)
+    subHeaderList1 = listChunk(totalLen - runningLen).build()
+    moviList = listChunk(contentLen).build()
+    odmlList = listChunk(len(odml)).build()
+    junk = pBL(0x41414141)
+       
+    ret = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx + odmlList + odml +  moviList + movi #+ indxField + vidData
+
+    return ret
+
+def buildInvalidAvi():
     vidSize = (0x400-0x7)
     numList = 4
     indexSize = 0x00000f00 #4C #indexes will be paded to this
@@ -349,32 +427,95 @@ def buildAvi():
     indxField = ifc.build()
     vidData = vid.build()
     odml = od.build()
+    invalid = invalidChunk().build()
     
     # put together everything so we can rebuild our RIFF chunk with the correct file size
-    totalLen = len(riff + mainHead + streamHead + strfC + indx + odml + movi + indxField + vidData) + lenList * numList
-    rc.reSize(totalLen+1)
+    mainHeaderList = listChunk(0).build()
+    subHeaderList1 = listChunk(0).build()
+    moviList = listChunk(0).build()
+    odmlList = listChunk((0)).build()
+    invalidList = listChunk((0)).build()
+    afterIndx =  invalidList + invalid + moviList + movi #+ indxField + vidData + odmlList + odml 
+    full = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx + afterIndx
+
+    isc.qwOffset = pLL(len(full) - len(afterIndx)+0x10) + pLL(0x00000000)
+    indx = isc.build()
+    riffLen = len(full) + 9
+    rc.reSize(riffLen)
     riff = rc.build()
-    
-    #build the lists
-    contentLen = len(movi + indxField + vidData)
-    runningLen = len(riff) + contentLen + lenList*2
-    mainHeaderList = listChunk(totalLen  - runningLen).build()
-    runningLen = runningLen + len(mainHead) + lenList*2 + len(odml)
-    subHeaderList1 = listChunk(totalLen - runningLen).build()
-    moviList = listChunk(contentLen).build()
+    hdrlLen = len(full) - len(riff) - len(afterIndx) - 4 
+    strlLen = len(full) - len(afterIndx) - len(riff + mainHeaderList + mainHead + subHeaderList1) + 4
+    mainHeaderList = listChunk(hdrlLen).build()
+    subHeaderList1 = listChunk(strlLen).build()
+    moviList = listChunk(len(movi+invalid+invalidList)).build()
     odmlList = listChunk(len(odml)).build()
-       
-    ret = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx + odmlList + odml + moviList + movi + indxField + vidData
+    invalidList = listChunk(len(invalid)).build()
+
+    ret = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx +  moviList + movi + invalidList + invalid  #+ indxField + vidData
+
+    return ret
+ 
+def buildInvalidAvi2774():
+    vidSize = (0x400-0x7)
+    numList = 4
+    indexSize = 0x00000f00 #4C #indexes will be paded to this
+
+    #initilize objects
+    vid = contentChunk(vidSize)
+    rc = riffChunk()
+    mhc = mainHeaderChunk()
+    shc = streamHeaderChunk()
+    strf = strfChunk()
+    mov = moviChunk()
+    isc = indxSuperChunk(indexSize)
+    ifc = indxFieldChunk(indexSize)
+    od = odmlChunk()
+    
+    lenList = len(listChunk(0).build())
+    #build the basic chunks so we can measure lengths and prepare
+    riff = rc.build()
+    mainHead = mhc.build()
+    streamHead = shc.build()
+    strfC = strf.build()
+    movi = mov.build()
+    indx = isc.build()
+    indxField = ifc.build()
+    vidData = vid.build()
+    odml = od.build()
+    invalid = invalidChunk().build()
+    
+    # put together everything so we can rebuild our RIFF chunk with the correct file size
+    mainHeaderList = listChunk(0).build()
+    subHeaderList1 = listChunk(0).build()
+    moviList = listChunk(0).build()
+    odmlList = listChunk((0)).build()
+    invalidList = listChunk((0)).build()
+    afterIndx =  invalidList + invalid + moviList + movi #+ indxField + vidData + odmlList + odml 
+    full = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx + afterIndx
+
+    isc.qwOffset = pLL(len(full) - len(afterIndx)+0x10) + pLL(0x00000000)
+    indx = isc.build()
+    riffLen = len(full) + 5
+    rc.reSize(riffLen)
+    riff = rc.build()
+    hdrlLen = len(full) - len(riff) - len(afterIndx) - 4 
+    strlLen = len(full) - len(afterIndx) - len(riff + mainHeaderList + mainHead + subHeaderList1) + 4
+    mainHeaderList = listChunk(hdrlLen).build()
+    subHeaderList1 = listChunk(strlLen).build()
+    moviList = listChunk(len(movi+invalid+invalidList)).build()
+    odmlList = listChunk(len(odml)).build()
+    invalidList = listChunk(len(invalid)).build()
+
+    ret = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx +  moviList + movi + invalidList + invalid  #+ indxField + vidData
 
     return ret
 
- 
+content = buildInvalidAvi2774()
 
 
-content = buildAvi()
-
-
-file = open("test.avi", "wb")
+filename = ".ignore\\"+ "test" + str(randint(0,10000)) + ".avi"
+file = open(filename, "wb")
 file.write(content)
 file.close()
+print(f"Finished Writing: {filename}")
 
